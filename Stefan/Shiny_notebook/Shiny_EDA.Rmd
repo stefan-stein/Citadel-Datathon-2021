@@ -1,0 +1,206 @@
+---
+title: "Shiny EDA"
+author: "Stefan Stein"
+date: "2/16/2021"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(naniar)
+library(cluster)
+library(factoextra)
+library(dygraphs)
+library(xts)
+```
+
+```{r}
+owid_covid_data <- read_csv("~/Documents/Programming/Citadel-Datathon/Datathon Materials/1_owid/owid-covid-data.csv",
+                            col_types = paste(c(rep("c",3),"D",rep("d",29),"c",rep("d",18)),collapse = ""))
+```
+
+
+# Clustering
+
+Let's drop "International" as location.
+
+```{r}
+# remove "International"
+test <- owid_covid_data%>%
+  select(location, 38:52)%>%
+  group_by(location)%>%
+  slice(1)%>%
+  filter(! location %in% c("International", "Monaco"))%>%
+  column_to_rownames("location")
+
+
+# Now cluster again
+d <- daisy(test,metric = "gower")
+fit <- hclust(d)
+
+```
+
+
+```{r}
+plot(fit, cex=0.3)
+rect.hclust(fit,k=5,border = "red")
+```
+
+Let's grab those 5 groups.
+
+```{r}
+test$group <- cutree(fit,k=5)
+test <- test%>%rownames_to_column("location")
+```
+
+Look at the groups
+
+```{r}
+inputPanel(
+  selectInput("group", label = "Select group:",
+              choices = 1:5, selected = "4")
+)
+
+renderTable({
+  test%>%
+  filter(group==input$group)%>%
+  select(location)
+})
+```
+
+
+
+
+
+# Time series
+
+```{r, fig.width=8}
+country <- "Sweden"
+
+inputPanel(
+  selectInput("country", label = "Select country:",
+              choices = test$location, selected = "Sweden")
+)
+
+
+renderDygraph({
+  xts(x = owid_covid_data%>%filter(location == input$country)%>%
+        select(stringency_index, new_cases_smoothed_per_million),
+    order.by = owid_covid_data%>%filter(location == input$country)%>%pull(date))%>%
+  dygraph()%>%
+  dySeries("stringency_index", axis = 'y2')%>%
+  dyAxis("y", label = "New cases per million (smoothed)")%>%
+  dyAxis("y2", label = "Stringency Index", valueRange = c(0,100))%>%
+  dyRangeSelector()%>%
+  dyCrosshair("both")
+})
+
+
+```
+
+
+# General: Compare two time series charts
+
+```{r}
+
+inputPanel(
+  selectInput("y1", label = "Select first variable:",
+              choices = names(owid_covid_data)[5:37], selected = "new_cases_smoothed_per_million"),
+  
+  selectInput("y2", label = "Select second variable:",
+              choices = names(owid_covid_data)[5:37], selected = "stringency_index"),
+  
+  selectInput("country2", label = "Select country:",
+              choices = test$location, selected = "Sweden")
+  
+)
+
+
+renderDygraph({
+  xts(x = owid_covid_data%>%filter(location == input$country2)%>%
+        select(input$y1, input$y2),
+    order.by = owid_covid_data%>%filter(location == input$country2)%>%pull(date))%>%
+  dygraph()%>%
+  dySeries(input$y2, axis = 'y2')%>%
+  dyAxis("y", label = input$y1)%>%
+  dyAxis("y2", label = input$y2)%>%
+  dyRangeSelector()%>%
+  dyCrosshair("both")
+})
+
+
+```
+
+
+# Two countries
+
+```{r}
+# 
+# inputPanel(
+#   
+#   selectInput("country_1", label = "Select first country:",
+#               choices = test$location, selected = "Sweden"),
+#   selectInput("country_2", label = "Select second country:",
+#               choices = test$location, selected = "Sweden"),
+#   
+#   selectInput("y_compare", label = "Select variable:",
+#               choices = names(owid_covid_data)[5:37], selected = "new_cases_smoothed_per_million")
+# )
+# 
+# 
+# renderDygraph({
+#   xts(x = cbind(owid_covid_data%>%filter(location == input$country_1)%>%select(input$y_compare)%>%setNames(input$country_1),
+#                 owid_covid_data%>%filter(location == input$country_2)%>%select(input$y_compare)%>%setNames(input$country_2)),
+#     order.by = owid_covid_data%>%filter(location == input$country_2)%>%pull(date))%>%
+#   dygraph()%>%
+#   dyAxis("y", label = input$y_compare)%>%
+#   dyRangeSelector()%>%
+#   dyCrosshair("both")
+# })
+
+
+```
+
+
+
+
+```{r}
+
+inputPanel(
+  
+  selectInput("country_1", label = "Select first country:",
+              choices = test$location, selected = "Sweden"),
+  selectInput("country_2", label = "Select second country:",
+              choices = test$location, selected = "Sweden"),
+  
+  selectInput("y_compare", label = "Select variable:",
+              choices = names(owid_covid_data)[5:37], selected = "new_cases_smoothed_per_million")
+)
+
+
+renderDygraph({
+  # xts_1 <- xts(owid_covid_data%>%filter(location == input$country_1)%>%select(input$y_compare)%>%setNames(input$country_1),
+  #              order.by = owid_covid_data%>%filter(location == input$country_1)%>%pull(date))
+  # xts_2 <- xts(owid_covid_data%>%filter(location == input$country_2)%>%select(input$y_compare)%>%setNames(input$country_2),
+  #              order.by = owid_covid_data%>%filter(location == input$country_2)%>%pull(date))
+  # 
+  dygraph(cbind(xts(owid_covid_data%>%filter(location == input$country_1)%>%select(input$y_compare)%>%setNames(input$country_1),
+               order.by = owid_covid_data%>%filter(location == input$country_1)%>%pull(date)),
+               xts(owid_covid_data%>%filter(location == input$country_2)%>%select(input$y_compare)%>%setNames(input$country_2),
+               order.by = owid_covid_data%>%filter(location == input$country_2)%>%pull(date))))%>%
+  dyAxis("y", label = input$y_compare)%>%
+  dyRangeSelector()%>%
+  dyCrosshair("both")
+})
+
+
+```
+
+
+
