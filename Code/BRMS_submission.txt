@@ -1,0 +1,14 @@
+#!/bin/bash
+
+#$ -o $HOME/brms/buster_test.$TASK_ID.stdout
+#$ -e $HOME/brms/buster_test.$TASK_ID.stderr
+#$ -l h_vmem=8G,h_rt=10:00:00
+#$ -S /bin/bash
+
+. /etc/profile
+module add dot
+module add R/3.5.1
+
+cd brms
+
+time Rscript --verbose BUSTER_model_fit.R
